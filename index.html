@@ -237,7 +237,8 @@
             'Pedro23': '69f5314e856a68218997261c',
             'Bruno34': '69f5319536566621a81550cf',
             'Cauã45': '69f531dbaaba8821975f22ef',
-            'Danilo56': '69f53211aaba8821975f23af'
+            'Danilo56': '69f53211aaba8821975f23af',
+            'kennedy67': '69f53534aaba8821975f2e00'
         };
 
         const CATEGORY_COLORS = {
@@ -276,6 +277,9 @@
                 const res = await fetch(`https://api.jsonbin.io/v3/b/${currentBinId}/latest`, {
                     headers: { 'X-Master-Key': MASTER_KEY }
                 });
+
+                if (!res.ok) throw new Error(`Falha na API: ${res.status}`);
+
                 const data = await res.json();
                 
                 // Safety: Only overwrite if we received a valid array record
@@ -283,12 +287,19 @@
                     transactions = data.record;
                     isDataInitialized = true; // Mark as safe to sync
                     render();
+                } else if (data && typeof data.record === 'object') {
+                    // É um objeto mas não array - provavelmente bin novo com JSON padrão do JSONBin
+                    console.log("Inicializando bin novo...");
+                    transactions = [];
+                    isDataInitialized = true;
+                    render();
                 } else {
                     throw new Error("Formato de dados inválido na nuvem");
                 }
             } catch (err) {
                 console.error("Erro ao carregar dados:", err);
-                alert("ERRO DE CARREGAMENTO: Os dados não foram baixados corretamente. Salve uma nova linha para tentar novamente ou verifique sua conexão.");
+                alert("ALERTA DE SEGURANÇA: Não foi possível carregar seus dados da nuvem. Para proteger seu histórico, o salvamento automático ficará desativado até que você reinicie o app com conexão estável.");
+                isDataInitialized = false; // Garante que não vamos transcrever branco sobre o que já existe
             } finally {
                 showLoading(false);
             }
