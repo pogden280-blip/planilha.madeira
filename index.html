@@ -283,23 +283,26 @@
             if (syncStatus) syncStatus.textContent = '☁️ SALVANDO...';
             
             try {
+                // Envolvemos em objeto para garantir que o sync nunca falhe com listas vazias
+                const payload = { assignments: transactions, updated: Date.now() };
+                
                 const response = await fetch(`https://api.jsonbin.io/v3/b/${currentBinId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-Master-Key': MASTER_KEY,
-                        'X-Bin-Versioning': 'false' // Evita criação de versões desnecessárias, foca na principal
+                        'X-Bin-Versioning': 'false'
                     },
-                    body: JSON.stringify(transactions)
+                    body: JSON.stringify(payload)
                 });
                 
                 if (response.ok && syncStatus) {
-                    syncStatus.textContent = '✅ SINCRONIZADO';
+                    syncStatus.textContent = '✅ SALVO';
                     setTimeout(() => { if(syncStatus) syncStatus.textContent = ''; }, 2000);
                 }
             } catch (err) {
                 console.error("Erro no sync:", err);
-                if (syncStatus) syncStatus.textContent = '❌ ERRO AO SALVAR';
+                if (syncStatus) syncStatus.textContent = '❌ ERRO';
             }
         }
 
@@ -307,33 +310,34 @@
             if (!currentBinId) return;
             showLoading(true);
             try {
-                // Adicionado timestamp para ignorar cache e pegar o dado real mais atual
-                const res = await fetch(`https://api.jsonbin.io/v3/b/${currentBinId}/latest?nocache=${Date.now()}`, {
+                // meta=false retorna o registro diretamente, economizando banda e tempo
+                const res = await fetch(`https://api.jsonbin.io/v3/b/${currentBinId}/latest?meta=false`, {
                     headers: { 
                         'X-Master-Key': MASTER_KEY,
                         'Cache-Control': 'no-cache'
                     }
                 });
 
-                if (!res.ok) throw new Error(`Falha na API: ${res.status}`);
+                if (!res.ok) throw new Error(`Falha: ${res.status}`);
 
                 const data = await res.json();
                 
-                if (data && Array.isArray(data.record)) {
-                    transactions = data.record;
-                    isDataInitialized = true;
-                    render();
-                } else if (data && typeof data.record === 'object') {
-                    console.log("Bin vazio ou formato novo, inicializando...");
+                // Suporte híbrido: novo formato {assignments:[]} ou formato antigo []
+                if (data && Array.isArray(data.assignments)) {
+                    transactions = data.assignments;
+                } else if (Array.isArray(data)) {
+                    transactions = data;
+                } else {
+                    console.log("Bin vazio ou novo, iniciando...");
                     transactions = [];
-                    isDataInitialized = true;
-                    render();
                 }
+
+                isDataInitialized = true;
+                render();
             } catch (err) {
                 console.error("Erro ao carregar:", err);
-                // Não limpamos as transações locais se falhar o carregamento para não perder dados que já estavam na memória
                 const syncStatus = document.getElementById('sync-status');
-                if (syncStatus) syncStatus.textContent = '⚠️ MODO OFFLINE';
+                if (syncStatus) syncStatus.textContent = '⚠️ OFFLINE';
             } finally {
                 showLoading(false);
             }
