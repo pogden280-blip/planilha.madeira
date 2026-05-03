@@ -225,7 +225,7 @@
     <div id="menu-backdrop" onclick="toggleMainMenu()" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-[155] hidden opacity-0 transition-opacity duration-300"></div>
 
     <!-- Interface Panel (Drawer) -->
-    <div id="control-panel-drawer" class="fixed inset-y-0 left-0 w-80 z-[170] bg-[#f4f1ee] dark:bg-[#1a1715] shadow-2xl border-r border-stone-200 dark:border-stone-800 p-6 flex flex-col">
+    <div id="control-panel-drawer" class="fixed inset-y-0 left-0 w-80 z-[170] bg-[#f4f1ee] dark:bg-[#1a1715] shadow-2xl border-r border-stone-200 dark:border-stone-800 p-6 flex flex-col -translate-x-full transition-transform duration-400 ease-in-out">
         <div class="flex items-center justify-between mb-8">
             <h3 class="text-sm font-black wood-text-3d uppercase tracking-widest">Painel de Casas</h3>
             <button onclick="toggleControlPanel()" class="p-2 text-stone-400 hover:text-stone-900 transition-colors">
@@ -635,8 +635,9 @@
 
         function openPanelFromMenu(category, shouldToggleMenu = true) {
             currentCategory = category;
+            activePanelIndex = null; 
             
-            // Garantir que a categoria existe e tem a caixa vazia
+            if (!panelData[category]) panelData[category] = [{ id: Date.now(), name: '', status: 'off', lastBy: '' }];
             ensureLastEmptyBox(category);
             
             const titleEl = document.querySelector('#control-panel-drawer h3');
@@ -661,18 +662,24 @@
         function toggleControlPanel(forceState = null) {
             const drawer = document.getElementById('control-panel-drawer');
             const backdrop = document.getElementById('panel-backdrop');
-            const isOpen = drawer.classList.contains('translate-x-0');
+            if (!drawer || !backdrop) return;
+            
+            const isOpen = drawer.classList.contains('open');
             const shouldOpen = forceState !== null ? forceState : !isOpen;
             
             if (shouldOpen) {
+                drawer.classList.add('open');
                 drawer.classList.remove('-translate-x-full');
                 drawer.classList.add('translate-x-0');
+                
                 backdrop.classList.remove('hidden');
                 setTimeout(() => backdrop.classList.add('opacity-100'), 10);
                 loadFromCloud();
             } else {
+                drawer.classList.remove('open');
                 drawer.classList.add('-translate-x-full');
                 drawer.classList.remove('translate-x-0');
+                
                 backdrop.classList.remove('opacity-100');
                 setTimeout(() => backdrop.classList.add('hidden'), 300);
             }
@@ -703,6 +710,12 @@
             const currentItem = panelData[currentCategory][index];
             if (!currentItem) return;
 
+            // Pega o nome do input antes de salvar
+            const inputEl = document.getElementById(`name-input-${index}`);
+            if (inputEl) {
+                currentItem.name = inputEl.value;
+            }
+
             // Lógica de alternância do status de teste/validando
             if (status === 'test' && currentItem.status === 'test') {
                 currentItem.status = 'validating';
@@ -714,13 +727,31 @@
             
             currentItem.lastBy = cleanTag;
             currentItem.lastTime = timestamp;
+            activePanelIndex = null; // Fecha edição após salvar status
             ensureLastEmptyBox(currentCategory);
-            renderPanel();
+            savePanelAndSync(); // Salva tudo ao mudar status
+        }
+
+        function deleteBox(index, event) {
+            if (event) event.stopPropagation();
+            if (!panelData[currentCategory]) return;
+            
+            if (confirm('Deseja realmente apagar esta caixa e todo seu conteúdo?')) {
+                panelData[currentCategory].splice(index, 1);
+                activePanelIndex = null;
+                savePanelAndSync();
+            }
         }
 
         async function savePanelAndSync() {
-            await syncToCloud();
-            renderPanel();
+            try {
+                await syncToCloud();
+            } catch (err) {
+                console.error("Sync error:", err);
+                alert("Erro ao salvar dados. Verifique sua conexão.");
+            } finally {
+                render();
+            }
         }
 
         function renderPanel() {
@@ -780,9 +811,9 @@
 
                 card.innerHTML = `
                     <div class="absolute top-0 left-0 right-0 bg-stone-200 dark:bg-stone-800 py-1 px-3 flex justify-between items-center border-b border-stone-300/30 dark:border-stone-700/30">
-                        <div class="flex flex-col">
-                            <span class="text-[6px] font-black uppercase text-stone-400 dark:text-stone-500 tracking-tighter">Casa ${i + 1}</span>
-                            <span class="text-[5px] font-bold text-stone-400 dark:text-stone-500">${item.lastTime || '--/-- --:--'}</span>
+                        <div class="flex flex-col leading-none">
+                            <span class="text-[6px] font-black uppercase text-stone-400 dark:text-stone-500 tracking-tighter mb-0.5">Casa ${i + 1}</span>
+                            <span class="text-[9px] font-black text-stone-600 dark:text-stone-300">${item.lastTime || '--/-- --:--'}</span>
                         </div>
                         <span class="text-[10px] font-black uppercase text-amber-900 dark:text-emerald-400 tracking-tight flex items-center gap-1">
                             <i data-lucide="user" class="w-2.5 h-2.5"></i> ${item.lastBy || 'VAZIO'}
@@ -791,7 +822,7 @@
                     
                     <!-- View Mode -->
                     <div id="view-${i}" class="${showEdit ? 'hidden' : 'flex'} flex-col gap-1 items-center justify-center py-1">
-                        <p class="text-[11px] font-black uppercase tracking-tight text-stone-800 dark:text-stone-100 truncate w-full text-center">
+                        <p class="text-[10px] font-black uppercase tracking-tight text-stone-800 dark:text-stone-100 break-words w-full text-center leading-tight px-1 overflow-hidden">
                             ${item.name || '---'}
                         </p>
                         <div class="flex items-center gap-1.5">
@@ -805,11 +836,12 @@
                     <!-- Edit Mode (Input) -->
                     <div id="edit-input-${i}" class="${showEdit ? 'flex' : 'hidden'} items-center gap-2" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="event.stopPropagation()">
                         <div class="relief-stat flex-1 p-0.5 rounded-lg border border-stone-200/30 dark:border-stone-700/30 flex items-center overflow-hidden">
-                            <input type="text" value="${item.name || ''}" placeholder="Link ou Nome..." 
-                                oninput="setChannelName(${i}, this.value)"
-                                onchange="savePanelAndSync()"
+                            <input type="text" id="name-input-${i}" value="${item.name || ''}" placeholder="Link ou Nome..." 
                                 class="panel-name-input flex-1 bg-transparent px-3 py-1.5 text-[9px] font-black text-black dark:text-white placeholder:text-stone-300 dark:placeholder:text-stone-600 uppercase tracking-tight">
                         </div>
+                        <button onclick="deleteBox(${i}, event)" class="p-2 text-red-500 hover:text-red-700 active:scale-95 transition-all bg-red-50 dark:bg-red-900/20 rounded-lg">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
                     </div>
 
                     <!-- Actions Panel -->
