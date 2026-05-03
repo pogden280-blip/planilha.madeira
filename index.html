@@ -343,11 +343,14 @@
         let isDataInitialized = false; 
         let longPressTimer;
         const MASTER_KEY = '$2a$10$D4Sd5VXrNrc1TAmEIfEgh.TnEc9wr2VJzzJvpMpTaQdQIx3wAFwS.';
-        const SHARED_PANEL_BIN_ID = '67c4ec1cad19ca34f872bb27'; // Shared Bin for House Panel
+        const SHARED_PANEL_BIN_ID = '69f69fd936566621a81b1e10'; // Shared Bin for House Panel
 
         // --- Long Press Logic ---
+        let isLongPressActive = false;
         function startLongPress(index) {
+            isLongPressActive = false;
             longPressTimer = setTimeout(() => {
+                isLongPressActive = true;
                 const actions = document.getElementById(`actions-${index}`);
                 const editInput = document.getElementById(`edit-input-${index}`);
                 const view = document.getElementById(`view-${index}`);
@@ -355,7 +358,6 @@
                 if (actions && editInput && view) {
                     const isClosing = !actions.classList.contains('hidden');
                     
-                    // Toggle visibility
                     actions.classList.toggle('hidden', isClosing);
                     actions.classList.toggle('flex', !isClosing);
                     editInput.classList.toggle('hidden', isClosing);
@@ -391,13 +393,16 @@
 
         // --- API Integration ---
         async function syncToCloud() {
-            if (!currentBinId || !isDataInitialized) return;
+            if (!currentBinId || !isDataInitialized) {
+                console.error("Sync bloqueado: Bin ID ausente ou dados não inicializados");
+                return;
+            }
             const syncStatus = document.getElementById('sync-status');
             if (syncStatus) syncStatus.textContent = '☁️ SALVANDO...';
             
             try {
                 // Sincronização Privada (Lançamentos)
-                await fetch(`https://api.jsonbin.io/v3/b/${currentBinId}`, {
+                const resPrivate = await fetch(`https://api.jsonbin.io/v3/b/${currentBinId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -408,7 +413,7 @@
                 });
 
                 // Sincronização Compartilhada (Painel de Casas)
-                await fetch(`https://api.jsonbin.io/v3/b/${SHARED_PANEL_BIN_ID}`, {
+                const resShared = await fetch(`https://api.jsonbin.io/v3/b/${SHARED_PANEL_BIN_ID}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -418,12 +423,16 @@
                     body: JSON.stringify({ panelData: panelData, updated: Date.now() })
                 });
                 
-                if (syncStatus) {
-                    syncStatus.textContent = '✅ SALVO';
-                    setTimeout(() => { if(syncStatus) syncStatus.textContent = ''; }, 2000);
+                if (resPrivate.ok && resShared.ok) {
+                    if (syncStatus) {
+                        syncStatus.textContent = '✅ SALVO';
+                        setTimeout(() => { if(syncStatus) syncStatus.textContent = ''; }, 2000);
+                    }
+                } else {
+                    throw new Error(`Privado: ${resPrivate.status}, Compartilhado: ${resShared.status}`);
                 }
             } catch (err) {
-                console.error("Erro ao sincronizar:", err);
+                console.error("Erro detalhado ao sincronizar:", err);
                 if (syncStatus) syncStatus.textContent = '❌ ERRO';
             }
         }
@@ -557,14 +566,18 @@
 
                 // Cor de destaque baseada no status
                 let statusColor = 'transparent';
-                if (item.status === 'on') statusColor = '#10b98120';
-                if (item.status === 'off') statusColor = '#ef444420';
-                if (item.status === 'test') statusColor = '#f59e0b20';
-                if (item.status === 'validating') statusColor = '#a855f720';
+                if (item.status === 'on') statusColor = '#10b98115';
+                if (item.status === 'off') statusColor = '#ef444415';
+                if (item.status === 'test') statusColor = '#f59e0b15';
+                if (item.status === 'validating') statusColor = '#a855f715';
                 card.style.backgroundColor = statusColor;
 
-                // Clique para abrir link (apenas se não estiver editando)
+                // Clique para abrir link (apenas se não estiver editando e não for long press)
                 card.onclick = (e) => {
+                    if (isLongPressActive) {
+                        isLongPressActive = false;
+                        return;
+                    }
                     const actions = document.getElementById(`actions-${i}`);
                     if (actions && actions.classList.contains('hidden')) {
                         if (isLink) {
